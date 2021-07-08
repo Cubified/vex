@@ -1,6 +1,6 @@
 all: vex
 
-CC=tcc
+CC=gcc
 
 LIBS=
 CFLAGS=-O3 -pipe -s -pedantic

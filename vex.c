@@ -15,7 +15,7 @@
 #define BUF_WIDTH  ((WIDTH-7)/4)
 #define BUF_HEIGHT HEIGHT
 
-#define MAXREAD (bufsize < filesize ? bufsize : filesize)
+#define MAXREAD (BUF_WIDTH*BUF_HEIGHT < filesize-(viewport*BUF_WIDTH) ? BUF_WIDTH*BUF_HEIGHT : filesize-(viewport*BUF_WIDTH))
 
 #define REMOVE_TERMINATORS(c) (c >= ' ' && c <= '~' ? c : ' ')
 
@@ -32,7 +32,9 @@ enum {
 };
 
 FILE *fp;
-unsigned char *viewbuf;
+unsigned char *filebuf,
+              *viewbuf;
+char *filename;
 struct winsize ws;
 struct termios tio;
 int cursor_y = 1,
@@ -42,43 +44,17 @@ int cursor_y = 1,
     mode = MODE_NORMAL,
     changed = 0,
     written = 0,
+    interactive = 0,
     bufsize,
     filesize;
 
 static void vex_init();
-static void vex_draw_line();
+static void vex_line();
 static void vex_draw();
 static void vex_save();
-static void vex_command();
+static void vex_comm();
 static void vex_loop();
 static void vex_stop();
-
-void vex_init(int argc, char **argv){
-  struct termios raw;
-
-  if(argc < 2 || argv[1] == NULL){
-    printf("Usage: vex [file]\n");
-    exit(1);
-  }
-
-  fp = fopen(argv[1], "rb+");
-  if(fp == NULL){
-    printf("Error: Failed to open file \"%s\" for reading.\n", argv[1]);
-    exit(2);
-  }
-  fseek(fp, 0, SEEK_END);
-  filesize = ftell(fp);
-  fseek(fp, 0, SEEK_SET);
-
-  ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
-
-  viewbuf = malloc(BUF_WIDTH*BUF_HEIGHT);
-
-  tcgetattr(STDIN_FILENO, &tio);
-  raw = tio;
-  raw.c_lflag &= ~(ECHO | ICANON);
-  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
-}
 
 #define vex_undraw_cursor() printf("\x1b[%i;1H\x1b[0;38;2;128;128;128m%.4x\x1b[%iG\x1b[0;38;2;128;128;128m%c", cursor_y, (cursor_y-1+viewport)*BUF_WIDTH, (BUF_WIDTH*3)+7+cursor_x, REMOVE_TERMINATORS(viewbuf[cursor_i]));
 
@@ -86,13 +62,45 @@ void vex_init(int argc, char **argv){
 
 #define vex_draw_char(line, col, i) printf("\x1b[%iG\x1b[0;38;2;%i;%i;%im%.2x \x1b[%iG\x1b[0;38;2;128;128;128m%c", (col*3)+6, (255-viewbuf[i]), (viewbuf[i]/2)+64, viewbuf[i], viewbuf[i], (BUF_WIDTH*3)+8+col, REMOVE_TERMINATORS(viewbuf[i]));
 
-void vex_draw_line(int line){
+#define vex_draw_statusbar() if(mode==MODE_NORMAL){printf("\x1b[%i;1H\x1b[0m\x1b[2K\x1b[0;38;2;200;200;200m\"%s\" \x1b[0;38;2;166;162;140m(%ib)\x1b[0m\x1b[%i;%iH\x1b[2 q", HEIGHT, filename, filesize, cursor_x, cursor_y);}else{printf("\x1b[%i;1H\x1b[0m\x1b[2K\x1b[0;38;2;174;95;13m-- INSERT --\x1b[0m\x1b[%i;%iH\x1b[6 q", HEIGHT, cursor_x, cursor_y);}
+
+void vex_init(int argc, char **argv){
+  int line;
+  struct termios raw;
+
+  if(argc < 2 || argv[1] == NULL){
+    printf("Usage: vex [file]\n");
+    exit(1);
+  } 
+
+  fp = fopen(argv[1], "rb+");
+  if(fp == NULL){
+    printf("Error: Failed to open file \"%s\" for reading.\n", argv[1]);
+    exit(2);
+  }
+  fseek(fp, 0, SEEK_END);
+  filebuf = malloc((filesize=ftell(fp)));
+  fseek(fp, 0, SEEK_SET);
+  fread(filebuf, filesize, 1, fp);
+
+  ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
+
+  filename = argv[1];
+  viewbuf = filebuf;
+ 
+  tcgetattr(STDIN_FILENO, &tio);
+  raw = tio;
+  raw.c_lflag &= ~(ECHO | ICANON);
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+}
+
+void vex_line(int line){
   int i;
 
   printf("\x1b[%i;1H\x1b[0;38;2;128;128;128m%.4x\x1b[%iG\x1b[0m|", line+1-viewport, line*BUF_WIDTH, (BUF_WIDTH*3)+6);
   for(i=line*BUF_WIDTH;i<(line*BUF_WIDTH)+BUF_WIDTH;i++){
-    if(i < bufsize){
-      vex_draw_char(line, i%BUF_WIDTH, i);
+    if(i-(viewport*BUF_WIDTH) < bufsize){
+      vex_draw_char(line, i%BUF_WIDTH, i-(viewport*BUF_WIDTH));
     }
   }
 }
@@ -100,11 +108,13 @@ void vex_draw_line(int line){
 void vex_draw(){
   int line;
 
-  printf("\x1b[2J\x1b[?25l\x1b[0;0H");
+  printf("\x1b[2J\x1b[?25l\x1b[?1002h\x1b[0;0H");
   for(line=viewport;line<BUF_HEIGHT+viewport;line++){
-    vex_draw_line(line);
+    vex_line(line);
   }
   printf("\x1b[2K\x1b[%i;%iH\x1b[?25h", cursor_y, cursor_x*3);
+  
+  vex_draw_statusbar();
 }
 
 void vex_save(){
@@ -118,7 +128,7 @@ void vex_save(){
   written = 1;
 }
 
-void vex_command(){
+void vex_comm(){
   char cmd[256], buf[64];
   int nread, cur = 0;
 
@@ -209,7 +219,7 @@ void vex_loop(){
       nibble = 0;
   char c[256];
   size_t n;
-  bufsize = fread(viewbuf, 1, BUF_WIDTH*BUF_HEIGHT, fp);
+  bufsize = MAXREAD;
 
   goto skip_meaningful_check;
 
@@ -220,7 +230,7 @@ void vex_loop(){
 
       if(n == 1 || c[1] != '['){
         mode = MODE_NORMAL;
-        printf("\x1b[2 q");
+        vex_draw_statusbar();
         vex_undraw_cursor();
         goto skip_meaningful_check;
       }
@@ -234,31 +244,36 @@ void vex_loop(){
           } else if(viewport > 0){
             viewport--;
             redraw = REDRAW_FULL;
+            viewbuf = &filebuf[viewport*BUF_WIDTH];
           }
           break;
         case 'B': /* Down arrow */
-          if(cursor_i+BUF_WIDTH >= MAXREAD) break;
+          if(cursor_i+BUF_WIDTH >= bufsize) break;
           if(cursor_y+1 < BUF_HEIGHT){
             cursor_y++;
             cursor_i += BUF_WIDTH;
-          } else { /* TODO */
+          } else if(viewport*BUF_WIDTH <= filesize){
             viewport++;
             redraw = REDRAW_FULL;
-            memmove(viewbuf+BUF_WIDTH, viewbuf, BUF_WIDTH*(BUF_HEIGHT-1));
-            //bufsize = fread(viewbuf+(BUF_WIDTH*(BUF_HEIGHT-1)), 1, BUF_WIDTH, fp);
+            viewbuf = &filebuf[viewport*BUF_WIDTH];
           }
           break;
         case 'C': /* Right arrow */
-          if(cursor_i < MAXREAD) { cursor_x++; cursor_i++; }
+          vex_undraw_cursor();
+          redraw = REDRAW_NONE;
+          if(cursor_x < BUF_WIDTH && cursor_i < bufsize) { cursor_x++; cursor_i++; }
           break;
         case 'D': /* Left arrow  */
-          if(cursor_x > 1) { cursor_x--; cursor_i--; }
+          vex_undraw_cursor();
+          redraw = REDRAW_NONE;
+          if(cursor_x > 1 && cursor_i > 0) { cursor_x--; cursor_i--; }
           break;
-        /******/
+        
         case '6': /* Page down */
-          if(viewport < BUF_HEIGHT-(BUF_HEIGHT/2)){
+          if(viewport*BUF_WIDTH < filesize){
             redraw = REDRAW_FULL;
             viewport += BUF_HEIGHT/2;
+            viewbuf = &filebuf[viewport*BUF_WIDTH];
           }
           break;
         case '5': /* Page up   */
@@ -266,18 +281,37 @@ void vex_loop(){
             redraw = REDRAW_FULL;
             viewport -= BUF_HEIGHT/2;
           }
+          viewbuf = &filebuf[viewport*BUF_WIDTH];
+          break;
+        
+        case 'M': /* Mouse */
+          if(c[3] == ' '){        /* Mouse down */
+            cursor_x = ((c[4]&0xff) - 0x21) / 3;
+            cursor_y = ((c[5]&0xff) - 0x21) + 1;
+            cursor_i = (cursor_y*BUF_WIDTH)+cursor_x;
+          } else if(c[3] == 'a'){ /* Scroll down */
+            redraw = REDRAW_FULL;
+            viewport += 5;
+            viewbuf = &filebuf[viewport*BUF_WIDTH];
+          } else if(c[3] == '`'){ /* Scroll up */
+            if(viewport >= 5){
+              redraw = REDRAW_FULL;
+              viewport -= 5;
+              viewbuf = &filebuf[viewport*BUF_WIDTH];
+            }
+          }
           break;
       }
     } else
       if((c[0] >= '0' && c[0] <= '9') ||
          (c[0] >= 'a' && c[0] <= 'f') ||
          (c[0] >= 'A' && c[0] <= 'F') ){
-      redraw = REDRAW_CHAR;
       if(mode == MODE_INSERT){
+        redraw = REDRAW_CHAR;
         c[1] = '\0';
         if(nibble == 0){
           viewbuf[cursor_i] = strtol(c, NULL, 16);
-          if(cursor_i >= MAXREAD){
+          if(cursor_i >= bufsize){
             if(bufsize == filesize){
               filesize++;
             }
@@ -302,12 +336,12 @@ void vex_loop(){
       case 'i':
         mode = MODE_INSERT;
         redraw = REDRAW_NONE;
-        printf("\x1b[6 q");
+        vex_draw_statusbar();
         break;
       case ':':
         redraw = REDRAW_NONE;
         if(mode == MODE_NORMAL){
-          vex_command();
+          vex_comm();
         }
         break;
       case 'h': /* TODO: Remove redundancy with above arrow key handling */
@@ -324,8 +358,7 @@ void vex_loop(){
         } else { /* TODO */
           viewport++;
           redraw = REDRAW_FULL;
-          memmove(viewbuf+BUF_WIDTH, viewbuf, BUF_WIDTH*(BUF_HEIGHT-1));
-          bufsize = fread(viewbuf+(BUF_WIDTH*(BUF_HEIGHT-1)), 1, BUF_WIDTH, fp);
+          viewbuf = &filebuf[viewport*BUF_WIDTH];
         }
         break;
       case 'k':
@@ -337,6 +370,7 @@ void vex_loop(){
         } else if(viewport > 0){
           viewport--;
           redraw = REDRAW_FULL;
+          viewbuf = &filebuf[viewport*BUF_WIDTH];
         }
         break;
       case 'l':
@@ -355,7 +389,7 @@ skip_meaningful_check:;
         vex_draw();
         break;
       case REDRAW_LINE:
-        vex_draw_line(cursor_y);
+        vex_line(cursor_y);
         break;
       case REDRAW_CHAR:
         vex_draw_char(cursor_y, cursor_i%BUF_WIDTH, cursor_i);
@@ -367,9 +401,9 @@ skip_meaningful_check:;
 
 void vex_stop(){
   fclose(fp);
-  free(viewbuf);
+  free(filebuf);
  
-  printf("\x1b[0m\x1b[0;0H\x1b[2J");
+  printf("\x1b[?1002l\x1b[0m\x1b[0;0H\x1b[2J");
   fflush(stdout);
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &tio);
 

@@ -4,10 +4,8 @@ A terminal-based hex editor with vi-like keybinds.
 
 I wrote this because I was dissatisfied with all the available terminal-based hex editors I could find, namely because they all lacked in one (or more) of these:
 - Speed:  Read/write multi-gigabyte files without chugging (and with color)
-- Navigation:  Move around a file quickly and painlessly
+- Navigation:  Move around a file quickly and painlessly (with both mouse and keyboard)
 - Interface:  Work with me (not against me) to edit files
-
-In its current state, vex is not yet fully functional.  However, it is capable of reading and writing to the beginning of files (because scrolling support has not yet been implemented).
 
 ### Screenshot
 
@@ -41,4 +39,5 @@ Will open `[file]` for editing.
 
 ### To-Do
 
-- Fix scrolling/dynamic reading of file
+- Eliminate flickering on scroll
+- More robust end-of-file checks on user input
