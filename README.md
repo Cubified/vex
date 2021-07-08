@@ -7,9 +7,11 @@ I wrote this because I was dissatisfied with all the available terminal-based he
 - Navigation:  Move around a file quickly and painlessly (with both mouse and keyboard)
 - Interface:  Work with me (not against me) to edit files
 
-### Screenshot
+### Screenshot and Demo
 
-![Demo](https://github.com/Cubified/vex/blob/main/demo.png)
+![Screenshot](https://github.com/Cubified/vex/blob/main/demo.png)
+
+![Demo](https://github.com/Cubified/vex/blob/main/demo.gif)
 
 ### Compiling
 
@@ -37,6 +39,13 @@ Will open `[file]` for editing.
      - `:89ab`:  Go to offset `0x89ab` in the file
 - Escape:  Exit insert mode/command entry, return to normal mode
 
+As well as some other useful ones, such as:
+
+- Mouse:  Click and scroll to navigate around file
+- Page Up/Page Down:  Navigate vertically through file
+- Home and End keys:  Navigate horizontally along the current line
+
 ### To-Do
 
 - More robust end-of-file checks on user input
+- Wrapping when in insert mode

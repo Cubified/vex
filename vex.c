@@ -145,7 +145,7 @@ void vex_comm(){
          (cmd[0] >= 'A' && cmd[0] <= 'F')){
         vex_undraw_cursor();
         cursor_i = strtol(cmd, NULL, 16);
-        cursor_x = ((cursor_i%BUF_WIDTH)*3)+1;
+        cursor_x = ((cursor_i%BUF_WIDTH))+1;
         cursor_y = (cursor_i/BUF_WIDTH)+1;
         return;
       }
