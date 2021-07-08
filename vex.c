@@ -56,9 +56,9 @@ static void vex_comm();
 static void vex_loop();
 static void vex_stop();
 
-#define vex_undraw_cursor() printf("\x1b[%i;1H\x1b[0;38;2;128;128;128m%.4x\x1b[%iG\x1b[0;38;2;128;128;128m%c", cursor_y, (cursor_y-1+viewport)*BUF_WIDTH, (BUF_WIDTH*3)+7+cursor_x, REMOVE_TERMINATORS(viewbuf[cursor_i]));
+#define vex_undraw_cursor() printf("\x1b[%i;1H\x1b[0;38;2;128;128;128m%.4x \x1b[%iG\x1b[0;38;2;128;128;128m%c", cursor_y, (cursor_y-1+viewport)*BUF_WIDTH, (BUF_WIDTH*3)+7+cursor_x, REMOVE_TERMINATORS(viewbuf[cursor_i]));
 
-#define vex_draw_cursor() printf("\x1b[%i;1H\x1b[0;38;2;255;255;255m%.4x\x1b[%iG\x1b[0;38;2;0;0;0;48;2;%i;%i;%im%c\x1b[%i;%iH", cursor_y, cursor_i+(viewport*BUF_WIDTH), (BUF_WIDTH*3)+7+cursor_x, mode, mode, mode, REMOVE_TERMINATORS(viewbuf[cursor_i]), cursor_y, (cursor_x*3)+3); fflush(stdout);
+#define vex_draw_cursor() printf("\x1b[%i;1H\x1b[0;38;2;255;255;255m%.4x \x1b[%iG\x1b[0;38;2;0;0;0;48;2;%i;%i;%im%c\x1b[%i;%iH", cursor_y, cursor_i+(viewport*BUF_WIDTH), (BUF_WIDTH*3)+7+cursor_x, mode, mode, mode, REMOVE_TERMINATORS(viewbuf[cursor_i]), cursor_y, (cursor_x*3)+3); fflush(stdout);
 
 #define vex_draw_char(line, col, i) printf("\x1b[%iG\x1b[0;38;2;%i;%i;%im%.2x \x1b[%iG\x1b[0;38;2;128;128;128m%c", (col*3)+6, (255-viewbuf[i]), (viewbuf[i]/2)+64, viewbuf[i], viewbuf[i], (BUF_WIDTH*3)+8+col, REMOVE_TERMINATORS(viewbuf[i]));
 
@@ -97,7 +97,7 @@ void vex_init(int argc, char **argv){
 void vex_line(int line){
   int i;
 
-  printf("\x1b[%i;1H\x1b[0;38;2;128;128;128m%.4x\x1b[%iG\x1b[0m|", line+1-viewport, line*BUF_WIDTH, (BUF_WIDTH*3)+6);
+  printf("\x1b[%i;1H\x1b[0;38;2;128;128;128m%.4x \x1b[%iG\x1b[0m|", line+1-viewport, line*BUF_WIDTH, (BUF_WIDTH*3)+6);
   for(i=line*BUF_WIDTH;i<(line*BUF_WIDTH)+BUF_WIDTH;i++){
     if(i-(viewport*BUF_WIDTH) < bufsize){
       vex_draw_char(line, i%BUF_WIDTH, i-(viewport*BUF_WIDTH));
@@ -108,7 +108,7 @@ void vex_line(int line){
 void vex_draw(){
   int line;
 
-  printf("\x1b[2J\x1b[?25l\x1b[?1002h\x1b[0;0H");
+  printf("\x1b[?25l\x1b[?1002h\x1b[0;0H");
   for(line=viewport;line<BUF_HEIGHT+viewport;line++){
     vex_line(line);
   }
@@ -268,6 +268,19 @@ void vex_loop(){
           redraw = REDRAW_NONE;
           if(cursor_x > 1 && cursor_i > 0) { cursor_x--; cursor_i--; }
           break;
+
+        case '1':
+          if(c[3] == '~'){ /* Home */
+            vex_undraw_cursor();
+            cursor_x = 1;
+            cursor_i = ((cursor_y-1)*BUF_WIDTH)+cursor_x-1;
+          }
+          break;
+        case '4': /* End */
+          vex_undraw_cursor();
+          cursor_x = BUF_WIDTH;
+          cursor_i = ((cursor_y-1)*BUF_WIDTH)+cursor_x-1;
+          break;
         
         case '6': /* Page down */
           if(viewport*BUF_WIDTH < filesize){
@@ -288,7 +301,7 @@ void vex_loop(){
           if(c[3] == ' '){        /* Mouse down */
             cursor_x = ((c[4]&0xff) - 0x21) / 3;
             cursor_y = ((c[5]&0xff) - 0x21) + 1;
-            cursor_i = (cursor_y*BUF_WIDTH)+cursor_x;
+            cursor_i = ((cursor_y-1)*BUF_WIDTH)+cursor_x-1;
           } else if(c[3] == 'a'){ /* Scroll down */
             redraw = REDRAW_FULL;
             viewport += 5;

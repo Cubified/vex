@@ -39,5 +39,4 @@ Will open `[file]` for editing.
 
 ### To-Do
 
-- Eliminate flickering on scroll
 - More robust end-of-file checks on user input
