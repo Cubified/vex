@@ -92,6 +92,8 @@ void vex_init(int argc, char **argv){
   raw = tio;
   raw.c_lflag &= ~(ECHO | ICANON);
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+
+  printf("\x1b[?1049h");
 }
 
 void vex_line(int line){
@@ -416,7 +418,7 @@ void vex_stop(){
   fclose(fp);
   free(filebuf);
  
-  printf("\x1b[?1002l\x1b[0m\x1b[0;0H\x1b[2J");
+  printf("\x1b[?1002l\x1b[0m\x1b[0;0H\x1b[?1049l");
   fflush(stdout);
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &tio);
 
